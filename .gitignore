@@ -1,0 +1,28 @@
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Claude / AI tool configs (tidak relevan untuk project)
+.claude/
+
+# Temporary / workaround files
+xgb_model_temp.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# VS Code (opsional, boleh dihapus baris ini kalau ingin share settings)
+.vscode/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Streamlit cache
+.streamlit/
