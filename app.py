@@ -529,6 +529,147 @@ ONE_HOT_COLS = list(CATEGORICAL_OPTIONS.keys()) + ["tenure_group"]
 SERVICE_COLS = ["OnlineSecurity","OnlineBackup","DeviceProtection",
                 "TechSupport","StreamingTV","StreamingMovies"]
 
+# ------------------------------------------------------------
+# Contoh Profil (preset customer) — untuk demo cepat tanpa isi form
+# ------------------------------------------------------------
+EXAMPLE_PROFILES = {
+    "🔴 Pelanggan Berisiko Tinggi — kontrak bulanan, baru gabung, tanpa add-on": {
+        "raw": {
+            "gender":"Female", "SeniorCitizen":0, "Partner":"No", "Dependents":"No",
+            "tenure":2, "PhoneService":"Yes", "MultipleLines":"No",
+            "InternetService":"Fiber optic", "OnlineSecurity":"No", "OnlineBackup":"No",
+            "DeviceProtection":"No", "TechSupport":"No", "StreamingTV":"Yes",
+            "StreamingMovies":"Yes", "Contract":"Month-to-month", "PaperlessBilling":"Yes",
+            "PaymentMethod":"Electronic check", "MonthlyCharges":95.0,
+        },
+    },
+    "🟠 Pelanggan Berisiko Sedang — tenure menengah, sebagian layanan aktif": {
+        "raw": {
+            "gender":"Male", "SeniorCitizen":0, "Partner":"Yes", "Dependents":"No",
+            "tenure":18, "PhoneService":"Yes", "MultipleLines":"Yes",
+            "InternetService":"DSL", "OnlineSecurity":"No", "OnlineBackup":"Yes",
+            "DeviceProtection":"No", "TechSupport":"No", "StreamingTV":"No",
+            "StreamingMovies":"No", "Contract":"One year", "PaperlessBilling":"Yes",
+            "PaymentMethod":"Mailed check", "MonthlyCharges":60.0,
+        },
+    },
+    "🟢 Pelanggan Aman — loyal, kontrak 2 tahun, lengkap dengan add-on proteksi": {
+        "raw": {
+            "gender":"Female", "SeniorCitizen":0, "Partner":"Yes", "Dependents":"Yes",
+            "tenure":60, "PhoneService":"Yes", "MultipleLines":"Yes",
+            "InternetService":"DSL", "OnlineSecurity":"Yes", "OnlineBackup":"Yes",
+            "DeviceProtection":"Yes", "TechSupport":"Yes", "StreamingTV":"Yes",
+            "StreamingMovies":"Yes", "Contract":"Two year", "PaperlessBilling":"No",
+            "PaymentMethod":"Bank transfer (automatic)", "MonthlyCharges":90.0,
+        },
+    },
+    "⚪ Senior Citizen — sendirian, tanpa internet, hanya telepon": {
+        "raw": {
+            "gender":"Male", "SeniorCitizen":1, "Partner":"No", "Dependents":"No",
+            "tenure":8, "PhoneService":"Yes", "MultipleLines":"No",
+            "InternetService":"No", "OnlineSecurity":"No internet service",
+            "OnlineBackup":"No internet service", "DeviceProtection":"No internet service",
+            "TechSupport":"No internet service", "StreamingTV":"No internet service",
+            "StreamingMovies":"No internet service", "Contract":"Month-to-month",
+            "PaperlessBilling":"No", "PaymentMethod":"Mailed check", "MonthlyCharges":25.0,
+        },
+    },
+}
+
+
+def build_features(raw_in):
+    """Ubah dict raw input jadi dataframe fitur final yang siap diprediksi."""
+    tenure     = raw_in["tenure"]
+    monthly_ch = raw_in["MonthlyCharges"]
+    total_ch   = monthly_ch * max(tenure, 1)
+    if tenure <= 12:   tg = "0-12"
+    elif tenure <= 24: tg = "13-24"
+    elif tenure <= 48: tg = "25-48"
+    elif tenure <= 60: tg = "49-60"
+    else:              tg = "61+"
+
+    raw = dict(raw_in)
+    raw["TotalCharges"] = total_ch
+    raw["tenure_group"] = tg
+
+    df_raw = pd.DataFrame([raw])
+    df_raw["gender"] = df_raw["gender"].map({"Male":1,"Female":0})
+    for col in ["Partner","Dependents","PhoneService","PaperlessBilling"]:
+        df_raw[col] = df_raw[col].map({"Yes":1,"No":0})
+    df_raw["num_services"] = sum(
+        (df_raw[c]=="Yes").astype(int) for c in SERVICE_COLS
+    )
+    df_enc   = pd.get_dummies(df_raw, columns=ONE_HOT_COLS, drop_first=True)
+    df_final = df_enc.reindex(columns=FEATURE_COLS, fill_value=0)
+    return df_final
+
+
+def render_prediction_result(df_final):
+    """Hitung probabilitas & render kartu hasil + chart kontribusi fitur."""
+    proba    = model.predict_proba(df_final)[0, 1]
+    is_churn = proba >= threshold
+
+    st.markdown("---")
+    col1, col2 = st.columns([1, 2])
+
+    with col1:
+        color  = RED if is_churn else GREEN
+        label  = f"⚠️ BERISIKO CHURN" if is_churn else "✅ AMAN"
+        sublbl = f"Probabilitas ≥ threshold {threshold:.2f}" if is_churn else f"Probabilitas < threshold {threshold:.2f}"
+
+        st.markdown(f"""
+        <div class="card" style="text-align:center; border-color:{color}40">
+            <div style="font-size:42px; font-weight:800; color:{color}">
+                {proba:.1%}
+            </div>
+            <div style="font-size:14px; font-weight:600; color:{color}; margin-top:4px">
+                {label}
+            </div>
+            <div style="font-size:11px; color:#8892a4; margin-top:6px">
+                {sublbl}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Gauge bar
+        fig_g, ax_g = plt.subplots(figsize=(4, 0.8))
+        ax_g.barh([""], [1], color="#2d3748", height=0.5)
+        ax_g.barh([""], [proba], color=RED if is_churn else GREEN, height=0.5)
+        ax_g.axvline(threshold, color="#e2e8f0", linewidth=1.5,
+                     linestyle="--", label=f"threshold={threshold:.2f}")
+        ax_g.set_xlim(0, 1)
+        ax_g.set_xticks([0, threshold, 1])
+        ax_g.set_xticklabels(["0", f"{threshold:.2f}", "1"], fontsize=8)
+        ax_g.legend(fontsize=7, loc="lower right", framealpha=0.2,
+                    edgecolor="#2d3748")
+        fig_g.tight_layout(pad=0.5)
+        st.pyplot(fig_g)
+
+    with col2:
+        st.markdown("#### Faktor Pendorong Prediksi")
+        st.caption("Koefisien × Nilai Fitur — menunjukkan kontribusi spesifik untuk customer ini.")
+
+        coef     = pd.Series(model.coef_[0], index=FEATURE_COLS)
+        contrib  = coef * df_final.iloc[0]
+        top_cont = contrib.abs().sort_values(ascending=False).head(10).index
+        top_c    = contrib[top_cont].sort_values()
+
+        fig_c, ax_c = plt.subplots(figsize=(5.5, 4.5))
+        colors_c = [RED if v > 0 else ACCENT for v in top_c.values]
+        ax_c.barh(range(len(top_c)), top_c.values,
+                  color=colors_c, height=0.6, edgecolor="none")
+        ax_c.set_yticks(range(len(top_c)))
+        ax_c.set_yticklabels(top_c.index, fontsize=9)
+        ax_c.axvline(0, color="#4a5568", linewidth=1)
+        ax_c.set_xlabel("Kontribusi terhadap log-odds churn", labelpad=10)
+        ax_c.set_title("Merah = dorong ke Churn  |  Biru = dorong ke No Churn",
+                       pad=12, fontsize=10)
+        ax_c.spines[["top","right"]].set_visible(False)
+        ax_c.grid(axis="x", alpha=0.3)
+        fig_c.tight_layout()
+        st.pyplot(fig_c)
+
+
 with tab4:
     st.markdown("### Predict New Customer")
     st.markdown("""
@@ -540,127 +681,91 @@ with tab4:
     </div>
     """, unsafe_allow_html=True)
 
-    with st.form("predict_form"):
-        c1, c2, c3 = st.columns(3)
+    input_mode = st.radio(
+        "Mode Input",
+        ["✏️ Input Manual", "📂 Contoh Profil"],
+        horizontal=True,
+        label_visibility="collapsed",
+    )
 
-        with c1:
-            st.markdown("<div class='section-label'>Demografi</div>", unsafe_allow_html=True)
-            gender     = st.selectbox("Gender", ["Female","Male"])
-            senior     = st.selectbox("Senior Citizen", ["No","Yes"])
-            partner    = st.selectbox("Has Partner", ["No","Yes"])
-            dependents = st.selectbox("Has Dependents", ["No","Yes"])
-            tenure     = st.slider("Tenure (months)", 0, 72, 12)
+    df_final_result = None
 
-        with c2:
-            st.markdown("<div class='section-label'>Layanan</div>", unsafe_allow_html=True)
-            phone_svc   = st.selectbox("Phone Service", ["Yes","No"])
-            multi_lines = st.selectbox("Multiple Lines", CATEGORICAL_OPTIONS["MultipleLines"])
-            internet    = st.selectbox("Internet Service", CATEGORICAL_OPTIONS["InternetService"])
-            online_sec  = st.selectbox("Online Security", CATEGORICAL_OPTIONS["OnlineSecurity"])
-            online_bak  = st.selectbox("Online Backup", CATEGORICAL_OPTIONS["OnlineBackup"])
-            dev_prot    = st.selectbox("Device Protection", CATEGORICAL_OPTIONS["DeviceProtection"])
+    # --------------------------------------------------------
+    # MODE: Input Manual
+    # --------------------------------------------------------
+    if input_mode == "✏️ Input Manual":
+        with st.form("predict_form"):
+            c1, c2, c3 = st.columns(3)
 
-        with c3:
-            st.markdown("<div class='section-label'>Billing</div>", unsafe_allow_html=True)
-            tech_sup   = st.selectbox("Tech Support", CATEGORICAL_OPTIONS["TechSupport"])
-            stream_tv  = st.selectbox("Streaming TV", CATEGORICAL_OPTIONS["StreamingTV"])
-            stream_mv  = st.selectbox("Streaming Movies", CATEGORICAL_OPTIONS["StreamingMovies"])
-            contract   = st.selectbox("Contract", CATEGORICAL_OPTIONS["Contract"])
-            paperless  = st.selectbox("Paperless Billing", ["Yes","No"])
-            payment    = st.selectbox("Payment Method", CATEGORICAL_OPTIONS["PaymentMethod"])
-            monthly_ch = st.number_input("Monthly Charges ($)", 0.0, 200.0, 70.0, step=1.0)
+            with c1:
+                st.markdown("<div class='section-label'>Demografi</div>", unsafe_allow_html=True)
+                gender     = st.selectbox("Gender", ["Female","Male"])
+                senior     = st.selectbox("Senior Citizen", ["No","Yes"])
+                partner    = st.selectbox("Has Partner", ["No","Yes"])
+                dependents = st.selectbox("Has Dependents", ["No","Yes"])
+                tenure     = st.slider("Tenure (months)", 0, 72, 12)
 
-        submitted = st.form_submit_button("🔍  Prediksi Churn", use_container_width=True)
+            with c2:
+                st.markdown("<div class='section-label'>Layanan</div>", unsafe_allow_html=True)
+                phone_svc   = st.selectbox("Phone Service", ["Yes","No"])
+                multi_lines = st.selectbox("Multiple Lines", CATEGORICAL_OPTIONS["MultipleLines"])
+                internet    = st.selectbox("Internet Service", CATEGORICAL_OPTIONS["InternetService"])
+                online_sec  = st.selectbox("Online Security", CATEGORICAL_OPTIONS["OnlineSecurity"])
+                online_bak  = st.selectbox("Online Backup", CATEGORICAL_OPTIONS["OnlineBackup"])
+                dev_prot    = st.selectbox("Device Protection", CATEGORICAL_OPTIONS["DeviceProtection"])
 
-    if submitted:
-        total_ch = monthly_ch * max(tenure, 1)
-        if tenure <= 12:   tg = "0-12"
-        elif tenure <= 24: tg = "13-24"
-        elif tenure <= 48: tg = "25-48"
-        elif tenure <= 60: tg = "49-60"
-        else:              tg = "61+"
+            with c3:
+                st.markdown("<div class='section-label'>Billing</div>", unsafe_allow_html=True)
+                tech_sup   = st.selectbox("Tech Support", CATEGORICAL_OPTIONS["TechSupport"])
+                stream_tv  = st.selectbox("Streaming TV", CATEGORICAL_OPTIONS["StreamingTV"])
+                stream_mv  = st.selectbox("Streaming Movies", CATEGORICAL_OPTIONS["StreamingMovies"])
+                contract   = st.selectbox("Contract", CATEGORICAL_OPTIONS["Contract"])
+                paperless  = st.selectbox("Paperless Billing", ["Yes","No"])
+                payment    = st.selectbox("Payment Method", CATEGORICAL_OPTIONS["PaymentMethod"])
+                monthly_ch = st.number_input("Monthly Charges ($)", 0.0, 200.0, 70.0, step=1.0)
 
-        raw = {
-            "gender":gender, "SeniorCitizen":1 if senior=="Yes" else 0,
-            "Partner":partner, "Dependents":dependents, "tenure":tenure,
-            "PhoneService":phone_svc, "MultipleLines":multi_lines,
-            "InternetService":internet, "OnlineSecurity":online_sec,
-            "OnlineBackup":online_bak, "DeviceProtection":dev_prot,
-            "TechSupport":tech_sup, "StreamingTV":stream_tv,
-            "StreamingMovies":stream_mv, "Contract":contract,
-            "PaperlessBilling":paperless, "PaymentMethod":payment,
-            "MonthlyCharges":monthly_ch, "TotalCharges":total_ch,
-            "tenure_group":tg,
-        }
-        df_raw = pd.DataFrame([raw])
-        df_raw["gender"] = df_raw["gender"].map({"Male":1,"Female":0})
-        for col in ["Partner","Dependents","PhoneService","PaperlessBilling"]:
-            df_raw[col] = df_raw[col].map({"Yes":1,"No":0})
-        df_raw["num_services"] = sum(
-            (df_raw[c]=="Yes").astype(int) for c in SERVICE_COLS
-        )
-        df_enc   = pd.get_dummies(df_raw, columns=ONE_HOT_COLS, drop_first=True)
-        df_final = df_enc.reindex(columns=FEATURE_COLS, fill_value=0)
+            submitted = st.form_submit_button("🔍  Prediksi Churn", use_container_width=True)
 
-        proba    = model.predict_proba(df_final)[0, 1]
-        is_churn = proba >= threshold
+        if submitted:
+            raw = {
+                "gender":gender, "SeniorCitizen":1 if senior=="Yes" else 0,
+                "Partner":partner, "Dependents":dependents, "tenure":tenure,
+                "PhoneService":phone_svc, "MultipleLines":multi_lines,
+                "InternetService":internet, "OnlineSecurity":online_sec,
+                "OnlineBackup":online_bak, "DeviceProtection":dev_prot,
+                "TechSupport":tech_sup, "StreamingTV":stream_tv,
+                "StreamingMovies":stream_mv, "Contract":contract,
+                "PaperlessBilling":paperless, "PaymentMethod":payment,
+                "MonthlyCharges":monthly_ch,
+            }
+            df_final_result = build_features(raw)
 
-        st.markdown("---")
-        col1, col2 = st.columns([1, 2])
+    # --------------------------------------------------------
+    # MODE: Contoh Profil
+    # --------------------------------------------------------
+    else:
+        st.markdown("<div class='section-label'>Pilih profil contoh untuk melihat cara kerja model</div>",
+                    unsafe_allow_html=True)
+        profile_name = st.selectbox("Contoh Profil", list(EXAMPLE_PROFILES.keys()),
+                                     label_visibility="collapsed")
+        profile_raw = EXAMPLE_PROFILES[profile_name]["raw"]
 
-        with col1:
-            color  = RED if is_churn else GREEN
-            label  = f"⚠️ BERISIKO CHURN" if is_churn else "✅ AMAN"
-            sublbl = f"Probabilitas ≥ threshold {threshold:.2f}" if is_churn else f"Probabilitas < threshold {threshold:.2f}"
+        p1, p2, p3, p4 = st.columns(4)
+        p1.metric("Tenure", f"{profile_raw['tenure']} bulan")
+        p2.metric("Contract", profile_raw["Contract"])
+        p3.metric("Internet", profile_raw["InternetService"])
+        p4.metric("Monthly Charges", f"${profile_raw['MonthlyCharges']:.2f}")
 
-            st.markdown(f"""
-            <div class="card" style="text-align:center; border-color:{color}40">
-                <div style="font-size:42px; font-weight:800; color:{color}">
-                    {proba:.1%}
-                </div>
-                <div style="font-size:14px; font-weight:600; color:{color}; margin-top:4px">
-                    {label}
-                </div>
-                <div style="font-size:11px; color:#8892a4; margin-top:6px">
-                    {sublbl}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+        with st.expander("Lihat detail profil ini"):
+            st.json(profile_raw)
 
-            # Gauge bar
-            fig_g, ax_g = plt.subplots(figsize=(4, 0.8))
-            ax_g.barh([""], [1], color="#2d3748", height=0.5)
-            ax_g.barh([""], [proba], color=RED if is_churn else GREEN, height=0.5)
-            ax_g.axvline(threshold, color="#e2e8f0", linewidth=1.5,
-                         linestyle="--", label=f"threshold={threshold:.2f}")
-            ax_g.set_xlim(0, 1)
-            ax_g.set_xticks([0, threshold, 1])
-            ax_g.set_xticklabels(["0", f"{threshold:.2f}", "1"], fontsize=8)
-            ax_g.legend(fontsize=7, loc="lower right", framealpha=0.2,
-                        edgecolor="#2d3748")
-            fig_g.tight_layout(pad=0.5)
-            st.pyplot(fig_g)
+        run_profile = st.button("🔍  Prediksi Profil Ini", use_container_width=True)
 
-        with col2:
-            st.markdown("#### Faktor Pendorong Prediksi")
-            st.caption("Koefisien × Nilai Fitur — menunjukkan kontribusi spesifik untuk customer ini.")
+        if run_profile:
+            df_final_result = build_features(profile_raw)
 
-            coef     = pd.Series(model.coef_[0], index=FEATURE_COLS)
-            contrib  = coef * df_final.iloc[0]
-            top_cont = contrib.abs().sort_values(ascending=False).head(10).index
-            top_c    = contrib[top_cont].sort_values()
-
-            fig_c, ax_c = plt.subplots(figsize=(5.5, 4.5))
-            colors_c = [RED if v > 0 else ACCENT for v in top_c.values]
-            ax_c.barh(range(len(top_c)), top_c.values,
-                      color=colors_c, height=0.6, edgecolor="none")
-            ax_c.set_yticks(range(len(top_c)))
-            ax_c.set_yticklabels(top_c.index, fontsize=9)
-            ax_c.axvline(0, color="#4a5568", linewidth=1)
-            ax_c.set_xlabel("Kontribusi terhadap log-odds churn", labelpad=10)
-            ax_c.set_title("Merah = dorong ke Churn  |  Biru = dorong ke No Churn",
-                           pad=12, fontsize=10)
-            ax_c.spines[["top","right"]].set_visible(False)
-            ax_c.grid(axis="x", alpha=0.3)
-            fig_c.tight_layout()
-            st.pyplot(fig_c)
+    # --------------------------------------------------------
+    # Render hasil (dipanggil dari mode manapun)
+    # --------------------------------------------------------
+    if df_final_result is not None:
+        render_prediction_result(df_final_result)
