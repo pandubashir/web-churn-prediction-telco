@@ -1,6 +1,6 @@
 """
-Customer Churn Prediction — Interactive Dashboard
-Run with: streamlit run app.py
+TelcoSight — Customer Churn Intelligence Platform
+Run: streamlit run "app churn.py"
 """
 
 import streamlit as st
@@ -9,183 +9,248 @@ import numpy as np
 import joblib
 import json
 import matplotlib.pyplot as plt
-import matplotlib as mpl
-import seaborn as sns
-from sklearn.metrics import confusion_matrix, roc_curve, auc, precision_recall_curve
 
 # ============================================================
-# Page config & Custom CSS
+# Page Config
 # ============================================================
 
 st.set_page_config(
-    page_title="Churn Prediction Dashboard",
+    page_title="TelcoSight · Churn Intelligence",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
+USD_TO_IDR = 17_000
+
+# ============================================================
+# CSS
+# ============================================================
+
 st.markdown("""
 <style>
-/* Font & base */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
-html, body, [class*="css"] {
-    font-family: 'Inter', sans-serif;
-}
+html, body { font-family: 'Inter', sans-serif; }
+#MainMenu {visibility:hidden;}
+footer {visibility:hidden;}
+header { background: transparent !important; }
+[data-testid="stToolbar"] {visibility:hidden;}
+[data-testid="stDecoration"] {display:none;}
 
-/* Hide streamlit default header/footer */
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
-header {visibility: hidden;}
+/* Pastikan sidebar content selalu visible */
+[data-testid="stSidebar"] * { visibility: visible !important; }
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] { display: block !important; }
+section[data-testid="stSidebar"] { display: block !important; }
 
-/* Main background */
-.stApp {
-    background-color: #0f1117;
-}
+.stApp { background-color: #080c14; }
 
-/* Sidebar */
 [data-testid="stSidebar"] {
-    background-color: #161b27;
-    border-right: 1px solid #1e2535;
+    background-color: #0d1220;
+    border-right: 1px solid #1a2540;
 }
 
-/* Metric cards */
 [data-testid="stMetric"] {
-    background-color: #1a2035;
+    background: linear-gradient(135deg, #111827 0%, #1a2035 100%);
     border: 1px solid #1e2d4a;
-    border-radius: 10px;
-    padding: 16px 20px;
+    border-radius: 12px;
+    padding: 18px 20px;
 }
 [data-testid="stMetricLabel"] {
-    font-size: 12px !important;
-    font-weight: 500;
-    color: #8892a4 !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    color: #64748b !important;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.08em;
 }
 [data-testid="stMetricValue"] {
-    font-size: 28px !important;
-    font-weight: 700 !important;
-    color: #e2e8f0 !important;
+    font-size: 26px !important;
+    font-weight: 800 !important;
+    color: #f1f5f9 !important;
 }
 
-/* Tabs */
-[data-testid="stTabs"] [data-baseweb="tab-list"] {
-    background-color: #161b27;
-    border-radius: 10px;
-    padding: 4px;
-    gap: 4px;
-    border: 1px solid #1e2535;
-}
-[data-testid="stTabs"] [data-baseweb="tab"] {
-    border-radius: 8px;
-    padding: 8px 20px;
-    font-weight: 500;
-    font-size: 13px;
-    color: #8892a4;
-}
-[data-testid="stTabs"] [aria-selected="true"] {
-    background-color: #1e3a5f !important;
-    color: #60a5fa !important;
-}
+h1,h2,h3 { color: #f1f5f9 !important; }
 
-/* Section headers */
-h1 { color: #e2e8f0 !important; font-weight: 700 !important; font-size: 24px !important; }
-h2 { color: #e2e8f0 !important; font-weight: 600 !important; font-size: 20px !important; }
-h3 { color: #cbd5e1 !important; font-weight: 600 !important; font-size: 16px !important; }
-
-/* Dataframe */
 [data-testid="stDataFrame"] {
-    border: 1px solid #1e2535;
+    border: 1px solid #1a2540;
     border-radius: 10px;
     overflow: hidden;
 }
 
-/* Info / success / error boxes */
-.stAlert {
-    border-radius: 10px;
-    border: none;
-}
+.stAlert { border-radius: 10px; border: none; }
 
-/* Slider */
-[data-testid="stSlider"] [data-baseweb="slider"] {
-    margin-top: 4px;
-}
-
-/* Selectbox */
-[data-testid="stSelectbox"] > div > div {
-    background-color: #1a2035;
-    border-color: #1e2535;
-    border-radius: 8px;
-}
-
-/* Custom card container */
-.card {
-    background-color: #1a2035;
-    border: 1px solid #1e2535;
-    border-radius: 12px;
-    padding: 20px 24px;
-    margin-bottom: 16px;
-}
-
-/* Section divider */
-.section-label {
+/* Developer badge */
+.dev-badge {
+    position: fixed;
+    top: 14px;
+    right: 20px;
+    background: linear-gradient(135deg, #1e2d4a, #111827);
+    border: 1px solid #1e3a5f;
+    border-radius: 20px;
+    padding: 6px 14px;
     font-size: 11px;
     font-weight: 600;
     color: #60a5fa;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-bottom: 12px;
+    z-index: 9999;
+    letter-spacing: 0.02em;
 }
 
-/* Sidebar model info */
-.sidebar-info {
-    background-color: #1e2d4a;
-    border-radius: 10px;
-    padding: 14px 16px;
-    margin-bottom: 8px;
-    border: 1px solid #2a3f5f;
-}
-.sidebar-info-label {
-    font-size: 11px;
-    color: #8892a4;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-.sidebar-info-value {
-    font-size: 18px;
+/* Hero */
+.hero-brand {
+    font-size: 13px;
     font-weight: 700;
-    color: #60a5fa;
-    margin-top: 2px;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 10px;
+    text-align: center;
+}
+.hero-title {
+    font-size: 48px;
+    font-weight: 800;
+    line-height: 1.2;
+    margin-bottom: 0;
+    text-align: center;
+    background: linear-gradient(90deg, #f1f5f9 0%, #60a5fa 50%, #818cf8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.hero-sub {
+    font-size: 13px;
+    color: #475569;
+    font-style: italic;
+    margin-top: 10px;
+    text-align: center;
+}
+
+/* Cards */
+.card {
+    background: linear-gradient(135deg, #111827 0%, #141e30 100%);
+    border: 1px solid #1a2540;
+    border-radius: 14px;
+    padding: 20px 22px;
+    margin-bottom: 12px;
+}
+.card-red    { border-color: #ef444440; }
+.card-yellow { border-color: #f59e0b40; }
+.card-green  { border-color: #22c55e40; }
+
+.section-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #3b82f6;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin-bottom: 10px;
+}
+
+/* Probability */
+.proba-number { font-size: 56px; font-weight: 800; line-height: 1; }
+.proba-high   { color: #ef4444; }
+.proba-medium { color: #f59e0b; }
+.proba-low    { color: #22c55e; }
+.risk-high    { color: #ef4444; font-weight: 800; font-size: 13px; }
+.risk-medium  { color: #f59e0b; font-weight: 800; font-size: 13px; }
+.risk-low     { color: #22c55e; font-weight: 800; font-size: 13px; }
+
+/* Signal rows */
+.signal-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #1a2540;
+    font-size: 13px;
+}
+.signal-label        { color: #94a3b8; }
+.signal-value-red    { color: #ef4444; font-weight: 600; }
+.signal-value-green  { color: #22c55e; font-weight: 600; }
+.signal-value-normal { color: #f1f5f9; font-weight: 500; }
+
+/* Rekomendasi */
+.rekom-box {
+    background: #1a2035;
+    border-left: 3px solid #3b82f6;
+    border-radius: 0 10px 10px 0;
+    padding: 12px 16px;
+    font-size: 13px;
+    color: #cbd5e1;
+    margin-top: 10px;
+}
+
+/* Sidebar detail cards */
+.detail-card {
+    background: #111827;
+    border: 1px solid #1a2540;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+}
+.detail-label { color: #64748b; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
+.detail-value { color: #f1f5f9; font-weight: 600; font-size: 13px; margin-top: 2px; }
+
+.divider { height: 1px; background: #1a2540; margin: 14px 0; }
+
+/* Expander */
+[data-testid="stExpander"] {
+    background: #111827;
+    border: 1px solid #1a2540 !important;
+    border-radius: 10px !important;
+}
+
+/* Footer row */
+.footer-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 4px 8px 4px;
+    border-top: 1px solid #1a2540;
+    margin-top: 20px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.footer-text {
+    font-size: 11px;
+    color: #1e2d4a;
+}
+
+/* Subtle technical-details toggle button */
+div[data-testid="stButton"] button[kind="secondary"].tech-toggle-btn,
+.tech-toggle-wrap div[data-testid="stButton"] button {
+    background: transparent !important;
+    border: 1px solid #1a2540 !important;
+    color: #3b4a6b !important;
+    font-size: 10px !important;
+    font-weight: 600 !important;
+    padding: 3px 10px !important;
+    border-radius: 20px !important;
+    letter-spacing: 0.03em;
+    box-shadow: none !important;
+    min-height: 0 !important;
+    line-height: 1.6 !important;
+}
+.tech-toggle-wrap div[data-testid="stButton"] button:hover {
+    border-color: #3b82f6 !important;
+    color: #60a5fa !important;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ============================================================
+# Developer badge
+st.markdown("""
+<div class="dev-badge">⚡ Developed by Pandu Bashir Alamin</div>
+""", unsafe_allow_html=True)
+
 # Matplotlib dark theme
-# ============================================================
-
 plt.rcParams.update({
-    "figure.facecolor":  "#1a2035",
-    "axes.facecolor":    "#1a2035",
-    "axes.edgecolor":    "#2d3748",
-    "axes.labelcolor":   "#a0aec0",
-    "axes.titlecolor":   "#e2e8f0",
-    "xtick.color":       "#718096",
-    "ytick.color":       "#718096",
-    "text.color":        "#e2e8f0",
-    "grid.color":        "#2d3748",
-    "grid.linewidth":    0.5,
-    "font.family":       "sans-serif",
-    "font.size":         10,
+    "figure.facecolor": "#111827", "axes.facecolor": "#111827",
+    "axes.edgecolor": "#1e2d4a", "axes.labelcolor": "#94a3b8",
+    "axes.titlecolor": "#94a3b8", "xtick.color": "#64748b",
+    "ytick.color": "#64748b", "text.color": "#f1f5f9",
+    "grid.color": "#1e2d4a", "grid.linewidth": 0.5,
+    "font.family": "sans-serif", "font.size": 10,
 })
-
-ACCENT   = "#60a5fa"
-RED      = "#f87171"
-GREEN    = "#34d399"
-ORANGE   = "#fb923c"
-BG_CARD  = "#1a2035"
 
 # ============================================================
 # Load data & model
@@ -206,566 +271,621 @@ def load_model_and_meta():
     return model, meta
 
 X_train, X_test, y_test = load_data()
-model, metadata          = load_model_and_meta()
+model, metadata         = load_model_and_meta()
 MODEL_NAME        = metadata["model_name"]
 DEFAULT_THRESHOLD = metadata["threshold"]
 FEATURE_COLS      = X_test.columns.tolist()
-y_proba_default   = model.predict_proba(X_test)[:, 1]
+y_proba_all       = model.predict_proba(X_test)[:, 1]
 
-# ============================================================
-# Sidebar
-# ============================================================
-
-with st.sidebar:
-    st.markdown("## 📊 Churn Prediction")
-    st.markdown("---")
-
-    st.markdown(f"""
-    <div class="sidebar-info">
-        <div class="sidebar-info-label">Model</div>
-        <div class="sidebar-info-value" style="font-size:14px">{MODEL_NAME}</div>
-    </div>
-    <div class="sidebar-info">
-        <div class="sidebar-info-label">ROC-AUC</div>
-        <div class="sidebar-info-value">{metadata['roc_auc']}</div>
-    </div>
-    <div class="sidebar-info">
-        <div class="sidebar-info-label">Recall (optimal)</div>
-        <div class="sidebar-info-value">{metadata['recall']:.1%}</div>
-    </div>
-    <div class="sidebar-info">
-        <div class="sidebar-info-label">Optimal Threshold</div>
-        <div class="sidebar-info-value">{DEFAULT_THRESHOLD}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("---")
-    threshold = st.slider(
-        "Classification Threshold",
-        min_value=0.10, max_value=0.70,
-        value=float(DEFAULT_THRESHOLD), step=0.05,
-        help="Turunkan threshold untuk meningkatkan recall (menangkap lebih banyak churn)."
-    )
-    st.caption(f"Threshold optimal dari training: **{DEFAULT_THRESHOLD}** (F2-score tertinggi)")
-
-y_pred = (y_proba_default >= threshold).astype(int)
-
-# ============================================================
-# Tabs
-# ============================================================
-
-tab1, tab2, tab3, tab4 = st.tabs([
-    "📈  Model Performance",
-    "💰  Risk & Business Impact",
-    "🔍  Interpretation",
-    "🧑  Predict Customer"
-])
-
-# ============================================================
-# TAB 1 — Model Performance
-# ============================================================
-
-with tab1:
-    st.markdown("### Model Performance")
-    st.markdown(f"<div class='section-label'>Threshold = {threshold:.2f}</div>", unsafe_allow_html=True)
-
-    cm = confusion_matrix(y_test, y_pred)
-    tn, fp, fn, tp = cm.ravel()
-    recall    = tp / (tp + fn) if (tp + fn) > 0 else 0
-    precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-    f1        = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
-    accuracy  = (tp + tn) / len(y_test)
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Recall", f"{recall:.1%}", help="Dari semua yang benar-benar churn, berapa persen terdeteksi.")
-    c2.metric("Precision", f"{precision:.1%}", help="Dari semua yang diprediksi churn, berapa persen benar.")
-    c3.metric("ROC-AUC", f"{metadata['roc_auc']}")
-    c4.metric("F1-Score", f"{f1:.3f}")
-
-    st.markdown(f"""
-    <div class="card">
-        Pada threshold <b>{threshold:.2f}</b>: model mendeteksi
-        <b style="color:{GREEN}">{tp} dari {tp+fn}</b> customer churn (recall {recall:.1%}),
-        dengan <b style="color:{ORANGE}">{fp} false alarm</b> dan
-        <b style="color:{RED}">{fn} customer churn terlewat</b>.
-    </div>
-    """, unsafe_allow_html=True)
-
-    col_l, col_r = st.columns(2)
-
-    with col_l:
-        st.markdown("#### Confusion Matrix")
-        fig, ax = plt.subplots(figsize=(4.5, 3.5))
-        cmap = mpl.colors.LinearSegmentedColormap.from_list("blue_dark", ["#1a2035", "#1e3a5f", "#60a5fa"])
-        sns.heatmap(cm, annot=True, fmt="d", cmap=cmap, ax=ax, linewidths=0.5,
-                    linecolor="#2d3748",
-                    xticklabels=["No Churn", "Churn"],
-                    yticklabels=["No Churn", "Churn"],
-                    annot_kws={"size": 14, "weight": "bold"})
-        ax.set_xlabel("Predicted", labelpad=10)
-        ax.set_ylabel("Actual", labelpad=10)
-        ax.set_title(f"Confusion Matrix  |  threshold={threshold:.2f}", pad=12)
-        fig.tight_layout()
-        st.pyplot(fig)
-
-    with col_r:
-        st.markdown("#### ROC Curve")
-        fpr, tpr, _ = roc_curve(y_test, y_proba_default)
-        roc_auc     = auc(fpr, tpr)
-        fig2, ax2   = plt.subplots(figsize=(4.5, 3.5))
-        ax2.plot(fpr, tpr, color=ACCENT, linewidth=2, label=f"AUC = {roc_auc:.3f}")
-        ax2.fill_between(fpr, tpr, alpha=0.08, color=ACCENT)
-        ax2.plot([0,1],[0,1], "--", color="#4a5568", linewidth=1, label="Random")
-        ax2.set_xlabel("False Positive Rate", labelpad=10)
-        ax2.set_ylabel("True Positive Rate", labelpad=10)
-        ax2.set_title("ROC Curve", pad=12)
-        ax2.legend(framealpha=0.2, edgecolor="#2d3748")
-        fig2.tight_layout()
-        st.pyplot(fig2)
-
-    st.markdown("#### Threshold Trade-off")
-    rows = []
-    for t in [0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50]:
-        pt = (y_proba_default >= t).astype(int)
-        cmt = confusion_matrix(y_test, pt)
-        tnt, fpt, fnt, tpt = cmt.ravel()
-        rec  = tpt / (tpt + fnt) if (tpt + fnt) > 0 else 0
-        prec = tpt / (tpt + fpt) if (tpt + fpt) > 0 else 0
-        rows.append({
-            "Threshold": t,
-            "Recall": f"{rec:.1%}",
-            "Precision": f"{prec:.1%}",
-            "FN (terlewat)": fnt,
-            "FP (false alarm)": fpt,
-            "": "✅ Dipilih" if t == DEFAULT_THRESHOLD else ""
-        })
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-
-# ============================================================
-# TAB 2 — Risk Segmentation & Business Impact
-# ============================================================
-
-with tab2:
-    st.markdown("### Risk Segmentation & Business Impact")
-
-    risk_df = pd.DataFrame({
-        "actual_churn":    y_test.values,
-        "churn_proba":     y_proba_default,
-        "monthly_charges": X_test["MonthlyCharges"].values
-    })
-
-    c1, c2 = st.columns(2)
-    with c1:
-        high_cut = st.slider("High Risk threshold (≥)", 0.5, 0.9, 0.6, 0.05)
-    with c2:
-        med_cut = st.slider("Medium Risk threshold (≥)", 0.2,
-                             float(high_cut)-0.05, DEFAULT_THRESHOLD, 0.05)
-
-    def segment(p):
-        if p >= high_cut:  return "High Risk"
-        elif p >= med_cut: return "Medium Risk"
-        else:              return "Low Risk"
-
-    risk_df["segment"] = risk_df["churn_proba"].apply(segment)
-    summary = risk_df.groupby("segment").agg(
-        Jumlah_Customer     = ("actual_churn", "count"),
-        Actual_Churn_Rate   = ("actual_churn", "mean"),
-        Avg_Monthly_Charges = ("monthly_charges", "mean")
-    ).reindex(["High Risk", "Medium Risk", "Low Risk"]).dropna()
-
-    col_l, col_r = st.columns([1.1, 1])
-
-    with col_l:
-        st.markdown("#### Segment Summary")
-        st.dataframe(
-            summary.style.format({
-                "Actual_Churn_Rate":   "{:.1%}",
-                "Avg_Monthly_Charges": "${:.2f}"
-            }),
-            use_container_width=True
-        )
-
-        fig, ax = plt.subplots(figsize=(5, 3))
-        seg_colors = [RED, ORANGE, GREEN]
-        bars = ax.bar(summary.index, summary["Actual_Churn_Rate"],
-                      color=seg_colors, width=0.5, edgecolor="none")
-        ax.set_ylabel("Actual Churn Rate", labelpad=10)
-        ax.set_ylim(0, 1)
-        ax.set_title("Churn Rate per Segment", pad=12)
-        ax.yaxis.set_major_formatter(mpl.ticker.PercentFormatter(xmax=1))
-        for bar, val in zip(bars, summary["Actual_Churn_Rate"]):
-            ax.text(bar.get_x() + bar.get_width()/2, val + 0.02,
-                    f"{val:.1%}", ha="center", fontweight="700",
-                    fontsize=12, color="#e2e8f0")
-        ax.spines[["top","right","left"]].set_visible(False)
-        ax.grid(axis="y", alpha=0.3)
-        fig.tight_layout()
-        st.pyplot(fig)
-
-    with col_r:
-        st.markdown("#### 💰 Business Impact Calculator")
-        success_rate = st.slider(
-            "Retention success rate", 0.0, 1.0, 0.30, 0.05,
-            help="% customer High Risk yang benar-benar churn namun berhasil diretensi."
-        )
-
-        high_risk       = risk_df[risk_df["segment"] == "High Risk"]
-        high_risk_churn = high_risk[high_risk["actual_churn"] == 1]
-        n_saved      = len(high_risk_churn) * success_rate
-        monthly_rev  = n_saved * high_risk_churn["monthly_charges"].mean() if len(high_risk_churn) > 0 else 0
-        annual_rev   = monthly_rev * 12
-
-        m1, m2 = st.columns(2)
-        m1.metric("High Risk Customer", f"{len(high_risk)}")
-        m2.metric("Benar-benar Churn", f"{len(high_risk_churn)}")
-        m1.metric("Estimasi Terselamatkan", f"{n_saved:.0f}")
-        m2.metric("Revenue / Tahun", f"${annual_rev:,.0f}")
-
-        st.markdown(f"""
-        <div class="card" style="margin-top:12px">
-            <div class="section-label">Cara membaca</div>
-            Dengan menarget <b style="color:{RED}">{len(high_risk)} customer High Risk</b>
-            (churn rate aktual {summary.loc['High Risk','Actual_Churn_Rate']:.1%}),
-            campaign retensi dengan success rate {success_rate:.0%} berpotensi
-            menyelamatkan <b style="color:{GREEN}">${annual_rev:,.0f}/tahun</b>.
-        </div>
-        """, unsafe_allow_html=True)
-        st.caption("Angka ilustratif — success rate aktual tergantung efektivitas campaign.")
-
-# ============================================================
-# TAB 3 — Model Interpretation
-# ============================================================
-
-with tab3:
-    st.markdown("### Model Interpretation")
-    st.markdown(f"""
-    <div class="card">
-        <div class="section-label">Metode Interpretasi</div>
-        Untuk <b>Logistic Regression</b>, interpretasi dilakukan melalui
-        <b>koefisien model</b> dan <b>odds ratio</b> — lebih tepat dibanding
-        SHAP TreeExplainer (khusus tree-based models).
-        Odds ratio menunjukkan <i>seberapa besar</i> suatu fitur meningkatkan
-        atau menurunkan risiko churn dibanding baseline.
-    </div>
-    """, unsafe_allow_html=True)
-
-    coef       = pd.Series(model.coef_[0], index=FEATURE_COLS)
-    top_idx    = coef.abs().sort_values(ascending=False).head(15).index
-    top_coef   = coef[top_idx].sort_values()
-    odds_ratio = np.exp(coef[top_idx]).sort_values(ascending=False)
-
-    col_l, col_r = st.columns(2)
-
-    with col_l:
-        st.markdown("#### Koefisien (Log-Odds)")
-        fig, ax = plt.subplots(figsize=(5.5, 5.5))
-        colors  = [RED if v > 0 else ACCENT for v in top_coef.values]
-        bars    = ax.barh(range(len(top_coef)), top_coef.values,
-                          color=colors, height=0.6, edgecolor="none")
-        ax.set_yticks(range(len(top_coef)))
-        ax.set_yticklabels(top_coef.index, fontsize=9)
-        ax.axvline(0, color="#4a5568", linewidth=1)
-        ax.set_xlabel("Log-Odds Coefficient", labelpad=10)
-        ax.set_title("Merah = dorong Churn  |  Biru = dorong No Churn", pad=12, fontsize=10)
-        ax.spines[["top","right"]].set_visible(False)
-        ax.grid(axis="x", alpha=0.3)
-        fig.tight_layout()
-        st.pyplot(fig)
-
-    with col_r:
-        st.markdown("#### Odds Ratio")
-        or_sorted = odds_ratio.sort_values()
-        fig2, ax2 = plt.subplots(figsize=(5.5, 5.5))
-        colors2   = [RED if v > 1 else ACCENT for v in or_sorted.values]
-        ax2.barh(range(len(or_sorted)), or_sorted.values,
-                 color=colors2, height=0.6, edgecolor="none")
-        ax2.set_yticks(range(len(or_sorted)))
-        ax2.set_yticklabels(or_sorted.index, fontsize=9)
-        ax2.axvline(1, color="#4a5568", linewidth=1, linestyle="--")
-        ax2.set_xlabel("Odds Ratio  exp(coef)", labelpad=10)
-        ax2.set_title(">1 = meningkatkan churn  |  <1 = menurunkan churn", pad=12, fontsize=10)
-        ax2.spines[["top","right"]].set_visible(False)
-        ax2.grid(axis="x", alpha=0.3)
-        fig2.tight_layout()
-        st.pyplot(fig2)
-
-    st.markdown("#### Tabel Odds Ratio")
-    or_table = pd.DataFrame({
-        "Feature":     odds_ratio.index,
-        "Coefficient": coef[odds_ratio.index].round(4).values,
-        "Odds Ratio":  odds_ratio.round(3).values,
-        "Arah":        ["⬆ Meningkatkan churn" if v > 1 else "⬇ Menurunkan churn"
-                        for v in odds_ratio.values]
-    })
-    st.dataframe(or_table, use_container_width=True, hide_index=True)
-
-    with st.expander("📖 Cara membaca Odds Ratio"):
-        st.markdown(f"""
-        - **OR > 1** → fitur ini **meningkatkan** risiko churn.
-          Contoh: OR = 2.5 → customer dengan fitur ini **2.5× lebih mungkin churn**.
-        - **OR < 1** → fitur ini **menurunkan** risiko churn.
-          Contoh: OR = 0.2 → customer dengan fitur ini hanya **0.2× kemungkinan churn** (lebih aman).
-        - **OR = 1** → fitur tidak berpengaruh pada probabilitas churn.
-        """)
-
-# ============================================================
-# TAB 4 — Predict New Customer
-# ============================================================
-
-CATEGORICAL_OPTIONS = {
-    "MultipleLines":    ["No", "Yes", "No phone service"],
-    "InternetService":  ["DSL", "Fiber optic", "No"],
-    "OnlineSecurity":   ["No", "Yes", "No internet service"],
-    "OnlineBackup":     ["No", "Yes", "No internet service"],
-    "DeviceProtection": ["No", "Yes", "No internet service"],
-    "TechSupport":      ["No", "Yes", "No internet service"],
-    "StreamingTV":      ["No", "Yes", "No internet service"],
-    "StreamingMovies":  ["No", "Yes", "No internet service"],
-    "Contract":         ["Month-to-month", "One year", "Two year"],
-    "PaymentMethod":    ["Electronic check", "Mailed check",
-                         "Bank transfer (automatic)", "Credit card (automatic)"],
-}
-ONE_HOT_COLS = list(CATEGORICAL_OPTIONS.keys()) + ["tenure_group"]
 SERVICE_COLS = ["OnlineSecurity","OnlineBackup","DeviceProtection",
                 "TechSupport","StreamingTV","StreamingMovies"]
+ONE_HOT_COLS = [
+    "MultipleLines","InternetService","OnlineSecurity","OnlineBackup",
+    "DeviceProtection","TechSupport","StreamingTV","StreamingMovies",
+    "Contract","PaymentMethod","tenure_group"
+]
 
-# ------------------------------------------------------------
-# Contoh Profil (preset customer) — untuk demo cepat tanpa isi form
-# ------------------------------------------------------------
-EXAMPLE_PROFILES = {
-    "🔴 Pelanggan Berisiko Tinggi — kontrak bulanan, baru gabung, tanpa add-on": {
-        "raw": {
-            "gender":"Female", "SeniorCitizen":0, "Partner":"No", "Dependents":"No",
-            "tenure":2, "PhoneService":"Yes", "MultipleLines":"No",
-            "InternetService":"Fiber optic", "OnlineSecurity":"No", "OnlineBackup":"No",
-            "DeviceProtection":"No", "TechSupport":"No", "StreamingTV":"Yes",
-            "StreamingMovies":"Yes", "Contract":"Month-to-month", "PaperlessBilling":"Yes",
-            "PaymentMethod":"Electronic check", "MonthlyCharges":95.0,
-        },
-    },
-    "🟠 Pelanggan Berisiko Sedang — tenure menengah, sebagian layanan aktif": {
-        "raw": {
-            "gender":"Male", "SeniorCitizen":0, "Partner":"Yes", "Dependents":"No",
-            "tenure":18, "PhoneService":"Yes", "MultipleLines":"Yes",
-            "InternetService":"DSL", "OnlineSecurity":"No", "OnlineBackup":"Yes",
-            "DeviceProtection":"No", "TechSupport":"No", "StreamingTV":"No",
-            "StreamingMovies":"No", "Contract":"One year", "PaperlessBilling":"Yes",
-            "PaymentMethod":"Mailed check", "MonthlyCharges":60.0,
-        },
-    },
-    "🟢 Pelanggan Aman — loyal, kontrak 2 tahun, lengkap dengan add-on proteksi": {
-        "raw": {
-            "gender":"Female", "SeniorCitizen":0, "Partner":"Yes", "Dependents":"Yes",
-            "tenure":60, "PhoneService":"Yes", "MultipleLines":"Yes",
-            "InternetService":"DSL", "OnlineSecurity":"Yes", "OnlineBackup":"Yes",
-            "DeviceProtection":"Yes", "TechSupport":"Yes", "StreamingTV":"Yes",
-            "StreamingMovies":"Yes", "Contract":"Two year", "PaperlessBilling":"No",
-            "PaymentMethod":"Bank transfer (automatic)", "MonthlyCharges":90.0,
-        },
-    },
-    "⚪ Senior Citizen — sendirian, tanpa internet, hanya telepon": {
-        "raw": {
-            "gender":"Male", "SeniorCitizen":1, "Partner":"No", "Dependents":"No",
-            "tenure":8, "PhoneService":"Yes", "MultipleLines":"No",
-            "InternetService":"No", "OnlineSecurity":"No internet service",
-            "OnlineBackup":"No internet service", "DeviceProtection":"No internet service",
-            "TechSupport":"No internet service", "StreamingTV":"No internet service",
-            "StreamingMovies":"No internet service", "Contract":"Month-to-month",
-            "PaperlessBilling":"No", "PaymentMethod":"Mailed check", "MonthlyCharges":25.0,
-        },
-    },
-}
+# ============================================================
+# Helpers
+# ============================================================
 
+def fmt_idr(usd_val):
+    """Format USD ke Rupiah dengan titik pemisah ribuan (format Indonesia)."""
+    idr = int(usd_val * USD_TO_IDR)
+    return "Rp {:,}".format(idr).replace(",", ".")
 
-def build_features(raw_in):
-    """Ubah dict raw input jadi dataframe fitur final yang siap diprediksi."""
-    tenure     = raw_in["tenure"]
-    monthly_ch = raw_in["MonthlyCharges"]
-    total_ch   = monthly_ch * max(tenure, 1)
+def encode_input(p):
+    tenure = p["tenure"]
     if tenure <= 12:   tg = "0-12"
     elif tenure <= 24: tg = "13-24"
     elif tenure <= 48: tg = "25-48"
     elif tenure <= 60: tg = "49-60"
     else:              tg = "61+"
 
-    raw = dict(raw_in)
-    raw["TotalCharges"] = total_ch
-    raw["tenure_group"] = tg
-
-    df_raw = pd.DataFrame([raw])
-    df_raw["gender"] = df_raw["gender"].map({"Male":1,"Female":0})
-    for col in ["Partner","Dependents","PhoneService","PaperlessBilling"]:
-        df_raw[col] = df_raw[col].map({"Yes":1,"No":0})
-    df_raw["num_services"] = sum(
-        (df_raw[c]=="Yes").astype(int) for c in SERVICE_COLS
-    )
-    df_enc   = pd.get_dummies(df_raw, columns=ONE_HOT_COLS, drop_first=True)
+    raw = {
+        "gender":        1 if p["gender"] == "Male" else 0,
+        "SeniorCitizen": 1 if p["senior"] == "Yes" else 0,
+        "Partner":       1 if p["partner"] == "Yes" else 0,
+        "Dependents":    1 if p["dependents"] == "Yes" else 0,
+        "tenure":        tenure,
+        "PhoneService":  1 if p["phone_svc"] == "Yes" else 0,
+        "MultipleLines": p["multi_lines"],
+        "InternetService": p["internet"],
+        "OnlineSecurity":  p["online_sec"],
+        "OnlineBackup":    p["online_bak"],
+        "DeviceProtection":p["dev_prot"],
+        "TechSupport":     p["tech_sup"],
+        "StreamingTV":     p["stream_tv"],
+        "StreamingMovies": p["stream_mv"],
+        "Contract":        p["contract"],
+        "PaperlessBilling":1 if p["paperless"] == "Yes" else 0,
+        "PaymentMethod":   p["payment"],
+        "MonthlyCharges":  p["monthly_ch"],
+        "TotalCharges":    p["monthly_ch"] * max(tenure, 1),
+        "tenure_group":    tg,
+    }
+    df = pd.DataFrame([raw])
+    df["num_services"] = sum((df[c] == "Yes").astype(int) for c in SERVICE_COLS)
+    df_enc   = pd.get_dummies(df, columns=ONE_HOT_COLS, drop_first=True)
     df_final = df_enc.reindex(columns=FEATURE_COLS, fill_value=0)
     return df_final
 
+def get_risk_level(proba, threshold):
+    if proba >= 0.6:
+        return "HIGH RISK",   "proba-high",   "card-red",    "risk-high"
+    elif proba >= threshold:
+        return "MEDIUM RISK", "proba-medium", "card-yellow", "risk-medium"
+    else:
+        return "LOW RISK",    "proba-low",    "card-green",  "risk-low"
 
-def render_prediction_result(df_final):
-    """Hitung probabilitas & render kartu hasil + chart kontribusi fitur."""
-    proba    = model.predict_proba(df_final)[0, 1]
-    is_churn = proba >= threshold
+# ============================================================
+# Contoh Profil
+# ============================================================
 
-    st.markdown("---")
-    col1, col2 = st.columns([1, 2])
+SAMPLE_PROFILES = {
+    "🔴  HIGH RISK — Pelanggan Baru, Kontrak Bulanan": {
+        "gender":"Female","senior":"No","partner":"No","dependents":"No",
+        "tenure":3,"phone_svc":"Yes","multi_lines":"No",
+        "internet":"Fiber optic","online_sec":"No","online_bak":"No",
+        "dev_prot":"No","tech_sup":"No","stream_tv":"No","stream_mv":"No",
+        "contract":"Month-to-month","paperless":"Yes",
+        "payment":"Electronic check","monthly_ch":89,
+        "desc":"Customer baru (3 bulan), Fiber optic tanpa layanan tambahan, "
+               "kontrak bulanan, bayar via electronic check. Kombinasi berisiko tinggi.",
+        "rekom":"Hubungi dalam 48 jam. Tawarkan diskon upgrade ke kontrak tahunan "
+                "atau paket bundling dengan online security gratis 3 bulan."
+    },
+    "🟡  MEDIUM RISK — Pelanggan Menengah, Mulai Tidak Aktif": {
+        "gender":"Male","senior":"No","partner":"Yes","dependents":"No",
+        "tenure":18,"phone_svc":"Yes","multi_lines":"Yes",
+        "internet":"DSL","online_sec":"No","online_bak":"Yes",
+        "dev_prot":"No","tech_sup":"No","stream_tv":"Yes","stream_mv":"No",
+        "contract":"Month-to-month","paperless":"Yes",
+        "payment":"Mailed check","monthly_ch":60,
+        "desc":"Customer 18 bulan dengan DSL, beberapa layanan tambahan tapi "
+               "masih kontrak bulanan. Perlu monitoring lebih lanjut.",
+        "rekom":"Kirim email personalisasi dengan highlight fitur yang belum dipakai. "
+                "Tawarkan loyalty reward untuk upgrade ke kontrak tahunan."
+    },
+    "🟢  LOW RISK — Pelanggan Loyal, Kontrak Panjang": {
+        "gender":"Male","senior":"No","partner":"Yes","dependents":"Yes",
+        "tenure":62,"phone_svc":"Yes","multi_lines":"Yes",
+        "internet":"DSL","online_sec":"Yes","online_bak":"Yes",
+        "dev_prot":"Yes","tech_sup":"Yes","stream_tv":"Yes","stream_mv":"Yes",
+        "contract":"Two year","paperless":"No",
+        "payment":"Credit card (automatic)","monthly_ch":79,
+        "desc":"Customer loyal 62 bulan dengan kontrak 2 tahun, semua layanan "
+               "tambahan aktif, bayar otomatis via credit card. Sangat stabil.",
+        "rekom":"Tidak perlu intervensi khusus. Kirim appreciation email tahunan "
+                "dan pastikan renewal kontrak berjalan mulus."
+    },
+}
 
-    with col1:
-        color  = RED if is_churn else GREEN
-        label  = f"⚠️ BERISIKO CHURN" if is_churn else "✅ AMAN"
-        sublbl = f"Probabilitas ≥ threshold {threshold:.2f}" if is_churn else f"Probabilitas < threshold {threshold:.2f}"
+# ============================================================
+# Global metrics
+# ============================================================
+
+total_customers = len(y_test)
+churn_rate      = y_test.mean()
+at_risk         = (y_proba_all >= DEFAULT_THRESHOLD).sum()
+avg_mrr_risk    = X_test.loc[y_proba_all >= DEFAULT_THRESHOLD, "MonthlyCharges"].mean()
+mrr_at_risk     = at_risk * avg_mrr_risk
+
+# ============================================================
+# Session State
+# ============================================================
+
+if "show_model_detail" not in st.session_state:
+    st.session_state["show_model_detail"] = False
+
+# ============================================================
+# Sidebar
+# ============================================================
+
+with st.sidebar:
+    st.markdown("""
+    <div style="text-align:center; padding:10px 0 18px 0">
+        <div style="font-size:20px; font-weight:800; color:#f1f5f9">📊 TelcoSight</div>
+        <div style="font-size:11px; color:#64748b; margin-top:3px">Telco Customer Platform</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+    st.markdown("""
+    <div style="font-size:10px; color:#374151; text-align:center">
+        Dataset: IBM Telco Customer Churn<br>
+        Stack: Python · Scikit-learn · Streamlit
+    </div>
+    """, unsafe_allow_html=True)
+
+# ============================================================
+# HERO
+# ============================================================
+
+st.markdown("""
+<div style="padding:16px 0 24px 0">
+    <div class="hero-brand">📊 TelcoSight · Business Intelligence</div>
+    <div class="hero-title">Customer Churn Intelligence Platform</div>
+    <div class="hero-sub">
+        Identifikasi pelanggan berisiko sebelum mereka pergi.
+        Prediksi real-time berbasis data pelanggan Telco.
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# Global metrics
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Total Pelanggan",  f"{total_customers:,}",
+          help="Jumlah customer di test set")
+c2.metric("Churn Rate Aktual", f"{churn_rate:.1%}",
+          help="Proporsi customer yang benar-benar churn di test set")
+c3.metric("Pelanggan At Risk", f"{at_risk:,}",
+          help=f"Customer diprediksi churn (threshold ≥ {DEFAULT_THRESHOLD})")
+c4.metric("MRR At Risk",       fmt_idr(mrr_at_risk),
+          help="Estimasi monthly revenue yang terancam dari customer at risk")
+
+st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+
+# ============================================================
+# INPUT  &  HASIL — side by side
+# ============================================================
+
+col_input, col_hasil = st.columns([1, 1], gap="large")
+
+# ---------- KOLOM INPUT ----------
+with col_input:
+    st.markdown("<div class='section-label'>Input Data Pelanggan</div>",
+                unsafe_allow_html=True)
+
+    input_mode = st.radio(
+        "Mode", ["✏️ Input Manual", "📋 Contoh Profil"],
+        horizontal=True, label_visibility="collapsed"
+    )
+
+    current_profile = {}
+
+    # ---- CONTOH PROFIL ----
+    if input_mode == "📋 Contoh Profil":
+        selected = st.selectbox(
+            "Pilih profil contoh:", list(SAMPLE_PROFILES.keys()),
+            label_visibility="collapsed"
+        )
+        prof = SAMPLE_PROFILES[selected]
+
+        card_cls = ("card-red"    if "HIGH"   in selected else
+                    "card-yellow" if "MEDIUM" in selected else "card-green")
+        sec_color = "#ef4444" if prof["online_sec"] == "No" else "#22c55e"
 
         st.markdown(f"""
-        <div class="card" style="text-align:center; border-color:{color}40">
-            <div style="font-size:42px; font-weight:800; color:{color}">
-                {proba:.1%}
+        <div class="card {card_cls}">
+            <div class="section-label">Profil Customer</div>
+            <div style="font-size:12px; color:#94a3b8; margin-bottom:12px">
+                {prof['desc']}
             </div>
-            <div style="font-size:14px; font-weight:600; color:{color}; margin-top:4px">
-                {label}
+            <div class="signal-row">
+                <span class="signal-label">Tenure</span>
+                <span class="signal-value-normal">{prof['tenure']} bulan</span>
             </div>
-            <div style="font-size:11px; color:#8892a4; margin-top:6px">
-                {sublbl}
+            <div class="signal-row">
+                <span class="signal-label">Contract</span>
+                <span class="signal-value-normal">{prof['contract']}</span>
+            </div>
+            <div class="signal-row">
+                <span class="signal-label">Internet Service</span>
+                <span class="signal-value-normal">{prof['internet']}</span>
+            </div>
+            <div class="signal-row">
+                <span class="signal-label">Payment Method</span>
+                <span class="signal-value-normal">{prof['payment']}</span>
+            </div>
+            <div class="signal-row">
+                <span class="signal-label">Monthly Charges</span>
+                <span class="signal-value-normal">
+                    ${prof['monthly_ch']:,} ({fmt_idr(prof['monthly_ch'])})
+                </span>
+            </div>
+            <div class="signal-row" style="border:none">
+                <span class="signal-label">Online Security</span>
+                <span style="color:{sec_color}; font-weight:600">
+                    {prof['online_sec']}
+                </span>
             </div>
         </div>
         """, unsafe_allow_html=True)
 
-        # Gauge bar
-        fig_g, ax_g = plt.subplots(figsize=(4, 0.8))
-        ax_g.barh([""], [1], color="#2d3748", height=0.5)
-        ax_g.barh([""], [proba], color=RED if is_churn else GREEN, height=0.5)
-        ax_g.axvline(threshold, color="#e2e8f0", linewidth=1.5,
-                     linestyle="--", label=f"threshold={threshold:.2f}")
-        ax_g.set_xlim(0, 1)
-        ax_g.set_xticks([0, threshold, 1])
-        ax_g.set_xticklabels(["0", f"{threshold:.2f}", "1"], fontsize=8)
-        ax_g.legend(fontsize=7, loc="lower right", framealpha=0.2,
-                    edgecolor="#2d3748")
-        fig_g.tight_layout(pad=0.5)
-        st.pyplot(fig_g)
+        current_profile = prof
 
-    with col2:
-        st.markdown("#### Faktor Pendorong Prediksi")
-        st.caption("Koefisien × Nilai Fitur — menunjukkan kontribusi spesifik untuk customer ini.")
+    # ---- INPUT MANUAL ----
+    else:
+        OPTS = {
+            "MultipleLines":    ["No","Yes","No phone service"],
+            "InternetService":  ["DSL","Fiber optic","No"],
+            "OnlineSecurity":   ["No","Yes","No internet service"],
+            "OnlineBackup":     ["No","Yes","No internet service"],
+            "DeviceProtection": ["No","Yes","No internet service"],
+            "TechSupport":      ["No","Yes","No internet service"],
+            "StreamingTV":      ["No","Yes","No internet service"],
+            "StreamingMovies":  ["No","Yes","No internet service"],
+            "Contract":         ["Month-to-month","One year","Two year"],
+            "PaymentMethod":    [
+                "Electronic check","Mailed check",
+                "Bank transfer (automatic)","Credit card (automatic)"
+            ],
+        }
 
-        coef     = pd.Series(model.coef_[0], index=FEATURE_COLS)
-        contrib  = coef * df_final.iloc[0]
-        top_cont = contrib.abs().sort_values(ascending=False).head(10).index
-        top_c    = contrib[top_cont].sort_values()
+        with st.expander("👤 Demografi", expanded=True):
+            g1, g2 = st.columns(2)
+            gender = g1.selectbox(
+                "Gender", ["Female","Male"],
+                help="Jenis kelamin pelanggan"
+            )
+            senior = g2.selectbox(
+                "Senior Citizen", ["No","Yes"],
+                help="Apakah pelanggan berusia 65 tahun ke atas?"
+            )
+            g3, g4 = st.columns(2)
+            partner = g3.selectbox(
+                "Partner", ["No","Yes"],
+                help="Apakah pelanggan memiliki pasangan?"
+            )
+            dependents = g4.selectbox(
+                "Dependents", ["No","Yes"],
+                help="Apakah pelanggan memiliki tanggungan (anak, orang tua, dll)?"
+            )
+            tenure = st.slider(
+                "Tenure (bulan)", 0, 72, 12,
+                help="Lama pelanggan telah berlangganan dalam bulan. "
+                     "Semakin lama biasanya semakin loyal."
+            )
 
-        fig_c, ax_c = plt.subplots(figsize=(5.5, 4.5))
-        colors_c = [RED if v > 0 else ACCENT for v in top_c.values]
-        ax_c.barh(range(len(top_c)), top_c.values,
-                  color=colors_c, height=0.6, edgecolor="none")
-        ax_c.set_yticks(range(len(top_c)))
-        ax_c.set_yticklabels(top_c.index, fontsize=9)
-        ax_c.axvline(0, color="#4a5568", linewidth=1)
-        ax_c.set_xlabel("Kontribusi terhadap log-odds churn", labelpad=10)
-        ax_c.set_title("Merah = dorong ke Churn  |  Biru = dorong ke No Churn",
-                       pad=12, fontsize=10)
-        ax_c.spines[["top","right"]].set_visible(False)
-        ax_c.grid(axis="x", alpha=0.3)
-        fig_c.tight_layout()
-        st.pyplot(fig_c)
+        with st.expander("📡 Layanan", expanded=True):
+            s1, s2 = st.columns(2)
+            phone_svc = s1.selectbox(
+                "Phone Service", ["Yes","No"],
+                help="Apakah pelanggan berlangganan layanan telepon?"
+            )
+            multi_lines = s2.selectbox(
+                "Multiple Lines", OPTS["MultipleLines"],
+                help="Apakah pelanggan punya lebih dari satu saluran telepon?"
+            )
+            s3, s4 = st.columns(2)
+            internet = s3.selectbox(
+                "Internet Service", OPTS["InternetService"],
+                help="Jenis layanan internet: DSL (lebih stabil/murah), "
+                     "Fiber optic (lebih cepat/mahal), atau tidak berlangganan."
+            )
+            online_sec = s4.selectbox(
+                "Online Security", OPTS["OnlineSecurity"],
+                help="Layanan keamanan online (proteksi dari ancaman siber). "
+                     "'No internet service' berarti tidak berlangganan internet."
+            )
+            s5, s6 = st.columns(2)
+            online_bak = s5.selectbox(
+                "Online Backup", OPTS["OnlineBackup"],
+                help="Layanan backup data online untuk melindungi file penting."
+            )
+            dev_prot = s6.selectbox(
+                "Device Protection", OPTS["DeviceProtection"],
+                help="Layanan proteksi perangkat (asuransi jika perangkat rusak/hilang)."
+            )
+            s7, s8 = st.columns(2)
+            tech_sup = s7.selectbox(
+                "Tech Support", OPTS["TechSupport"],
+                help="Layanan dukungan teknis premium dari tim CS khusus."
+            )
+            stream_tv = s8.selectbox(
+                "Streaming TV", OPTS["StreamingTV"],
+                help="Apakah pelanggan berlangganan layanan streaming TV?"
+            )
+            stream_mv = st.selectbox(
+                "Streaming Movies", OPTS["StreamingMovies"],
+                help="Apakah pelanggan berlangganan layanan streaming film/movie?"
+            )
 
+        with st.expander("💳 Billing", expanded=True):
+            contract = st.selectbox(
+                "Contract", OPTS["Contract"],
+                help="Tipe kontrak: Month-to-month (paling fleksibel, risiko churn tinggi), "
+                     "One year, atau Two year (paling loyal)."
+            )
+            b1, b2 = st.columns(2)
+            paperless = b1.selectbox(
+                "Paperless Billing", ["Yes","No"],
+                help="Apakah pelanggan memilih tagihan digital (email) "
+                     "dibanding tagihan kertas?"
+            )
+            payment = b2.selectbox(
+                "Payment Method", OPTS["PaymentMethod"],
+                help="Metode pembayaran: Electronic check (risiko churn lebih tinggi), "
+                     "Mailed check, Bank transfer (automatic), atau Credit card (automatic)."
+            )
+            monthly_ch = st.number_input(
+                "Monthly Charges ($)", 0, 200, 70, step=1,
+                help="Total tagihan bulanan pelanggan dalam USD. "
+                     "Charges lebih tinggi berkorelasi dengan risiko churn lebih tinggi."
+            )
+            st.caption(f"≈ {fmt_idr(monthly_ch)} / bulan")
 
-with tab4:
-    st.markdown("### Predict New Customer")
-    st.markdown("""
-    <div class="card">
-        <div class="section-label">Cara Pakai</div>
-        Isi profil customer di bawah, lalu klik <b>Prediksi Churn</b>.
-        Model akan menghitung probabilitas churn dan menampilkan faktor-faktor
-        yang paling mempengaruhi prediksi untuk customer tersebut secara spesifik.
+        current_profile = {
+            "gender":gender, "senior":senior, "partner":partner,
+            "dependents":dependents, "tenure":tenure, "phone_svc":phone_svc,
+            "multi_lines":multi_lines, "internet":internet, "online_sec":online_sec,
+            "online_bak":online_bak, "dev_prot":dev_prot, "tech_sup":tech_sup,
+            "stream_tv":stream_tv, "stream_mv":stream_mv, "contract":contract,
+            "paperless":paperless, "payment":payment, "monthly_ch":monthly_ch,
+        }
+
+    # Tombol prediksi — selalu harus klik, tidak ada auto-predict
+    predict_btn = st.button(
+        "🔍  Analisis Risiko Churn",
+        use_container_width=True,
+        type="primary"
+    )
+
+# ---------- KOLOM HASIL ----------
+with col_hasil:
+    st.markdown("<div class='section-label'>Hasil Analisis Risiko</div>",
+                unsafe_allow_html=True)
+
+    if predict_btn and current_profile:
+        df_input = encode_input(current_profile)
+        proba    = model.predict_proba(df_input)[0, 1]
+        risk_lbl, proba_cls, card_cls, risk_cls = get_risk_level(proba, DEFAULT_THRESHOLD)
+        monthly_usd = current_profile.get("monthly_ch", 70)
+        rekom = current_profile.get(
+            "rekom",
+            "Lakukan analisis lebih lanjut berdasarkan riwayat interaksi customer."
+        )
+
+        # Probabilitas
+        st.markdown(f"""
+        <div class="card {card_cls}">
+            <div class="section-label">Probabilitas Churn</div>
+            <div class="{proba_cls} proba-number">{proba:.1%}</div>
+            <div class="{risk_cls}" style="margin-top:6px">⚠ {risk_lbl}</div>
+            <div style="font-size:11px; color:#475569; margin-top:4px">
+                threshold = {DEFAULT_THRESHOLD} ·
+                {'DIPREDIKSI CHURN' if proba >= DEFAULT_THRESHOLD else 'AMAN'}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Rekomendasi
+        st.markdown(f"""
+        <div class="card">
+            <div class="section-label">🎯 Rekomendasi Tim CS</div>
+            <div class="rekom-box">{rekom}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Business impact
+        bi1, bi2 = st.columns(2)
+        bi1.metric("Revenue Berisiko / Bulan", fmt_idr(monthly_usd))
+        bi2.metric("Revenue Berisiko / Tahun",  fmt_idr(monthly_usd * 12))
+
+        # Faktor pendorong
+        st.markdown(
+            "<div class='section-label' style='margin-top:14px'>Detail Sinyal Risiko</div>",
+            unsafe_allow_html=True
+        )
+        coef    = pd.Series(model.coef_[0], index=FEATURE_COLS)
+        contrib = coef * df_input.iloc[0]
+        top_idx = contrib.abs().sort_values(ascending=False).head(8).index
+        top_c   = contrib[top_idx].sort_values()
+
+        fig, ax = plt.subplots(figsize=(5, 3.5))
+        colors  = ["#ef4444" if v > 0 else "#3b82f6" for v in top_c.values]
+        ax.barh(range(len(top_c)), top_c.values,
+                color=colors, height=0.55, edgecolor="none")
+        ax.set_yticks(range(len(top_c)))
+        ax.set_yticklabels(top_c.index, fontsize=8.5)
+        ax.axvline(0, color="#374151", linewidth=1)
+        ax.set_xlabel("Kontribusi ke log-odds churn", fontsize=9, labelpad=8)
+        ax.set_title("🔴 Dorong Churn  |  🔵 Dorong No Churn",
+                     fontsize=9, pad=10, color="#94a3b8")
+        ax.spines[["top","right"]].set_visible(False)
+        ax.grid(axis="x", alpha=0.3)
+        fig.tight_layout(pad=0.8)
+        st.pyplot(fig)
+
+    else:
+        st.markdown("""
+        <div class="card" style="text-align:center; padding:48px 20px">
+            <div style="font-size:38px">🔍</div>
+            <div style="font-size:15px; font-weight:600;
+                        color:#f1f5f9; margin-top:14px">
+                Belum ada prediksi
+            </div>
+            <div style="font-size:12px; color:#64748b; margin-top:6px">
+                Pilih contoh profil atau isi input manual,<br>
+                lalu klik <b>Analisis Risiko Churn</b>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+# ============================================================
+# SEGMENTASI BAWAH
+# ============================================================
+
+st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+st.markdown(
+    "<div class='section-label'>Segmentasi Risiko — Seluruh Customer</div>",
+    unsafe_allow_html=True
+)
+
+risk_df = pd.DataFrame({
+    "actual_churn":    y_test.values,
+    "churn_proba":     y_proba_all,
+    "monthly_charges": X_test["MonthlyCharges"].values
+})
+
+def seg_all(p):
+    if p >= 0.6:                 return "🔴 High Risk"
+    elif p >= DEFAULT_THRESHOLD: return "🟡 Medium Risk"
+    else:                        return "🟢 Low Risk"
+
+risk_df["segment"] = risk_df["churn_proba"].apply(seg_all)
+summary = risk_df.groupby("segment").agg(
+    Jumlah      = ("actual_churn","count"),
+    Churn_Rate  = ("actual_churn","mean"),
+    Avg_Monthly = ("monthly_charges","mean")
+).reindex(["🔴 High Risk","🟡 Medium Risk","🟢 Low Risk"]).dropna()
+
+r1, r2, r3 = st.columns(3)
+for col_st, (seg, row) in zip([r1,r2,r3], summary.iterrows()):
+    color   = "#ef4444" if "High" in seg else "#f59e0b" if "Medium" in seg else "#22c55e"
+    mrr_est = fmt_idr(row["Jumlah"] * row["Avg_Monthly"] * row["Churn_Rate"])
+    col_st.markdown(f"""
+    <div class="card" style="border-color:{color}40">
+        <div style="font-size:13px; font-weight:700; color:{color}">{seg}</div>
+        <div style="font-size:30px; font-weight:800; color:#f1f5f9; margin:8px 0">
+            {int(row['Jumlah']):,}
+        </div>
+        <div style="font-size:11px; color:#64748b; margin-bottom:10px">customer</div>
+        <div class="signal-row">
+            <span class="signal-label">Actual Churn Rate</span>
+            <span style="color:{color}; font-weight:700">{row['Churn_Rate']:.1%}</span>
+        </div>
+        <div class="signal-row">
+            <span class="signal-label">Avg Monthly</span>
+            <span class="signal-value-normal">{fmt_idr(row['Avg_Monthly'])}</span>
+        </div>
+        <div class="signal-row" style="border:none">
+            <span class="signal-label">MRR At Risk</span>
+            <span style="color:{color}; font-weight:600">{mrr_est}</span>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
-    input_mode = st.radio(
-        "Mode Input",
-        ["✏️ Input Manual", "📂 Contoh Profil"],
-        horizontal=True,
-        label_visibility="collapsed",
+# ============================================================
+# FOOTER — dengan tombol "Technical Details" tersembunyi/subtle
+# ============================================================
+
+st.markdown("<div style='border-top:1px solid #1a2540; margin-top:20px'></div>",
+            unsafe_allow_html=True)
+
+f1, f2 = st.columns([5, 1.3])
+with f1:
+    st.markdown("""
+    <div style="padding-top:14px; font-size:11px; color:#1e2d4a">
+        TelcoSight · Dataset: IBM Telco Customer Churn ·
+        Model: Logistic Regression · Stack: Python · Scikit-learn · Streamlit ·
+        ⚡ Developed by Pandu Bashir Alamin
+    </div>
+    """, unsafe_allow_html=True)
+with f2:
+    st.markdown('<div class="tech-toggle-wrap" style="padding-top:10px; text-align:right">',
+                unsafe_allow_html=True)
+    if st.button("🔬 Technical Details", key="tech_toggle"):
+        st.session_state["show_model_detail"] = not st.session_state["show_model_detail"]
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# Section detail teknis — hanya muncul kalau tombol di footer diklik.
+# Ditujukan untuk data scientist / interviewer / technical reviewer,
+# tidak mengganggu tampilan default untuk user bisnis (CS/retention).
+if st.session_state["show_model_detail"]:
+    st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='section-label'>🔬 Technical Details — Model Diagnostics</div>",
+        unsafe_allow_html=True
     )
 
-    df_final_result = None
+    with st.expander("Detail Model Teknis", expanded=True):
+        d1, d2, d3 = st.columns(3)
+        details = [
+            ("Model",             MODEL_NAME),
+            ("ROC-AUC",           str(metadata["roc_auc"])),
+            ("Recall (optimal)",  f"{metadata['recall']:.1%}"),
+            ("Threshold",         str(DEFAULT_THRESHOLD)),
+            ("False Negative",    f"{metadata['fn']} customer terlewat"),
+            ("False Positive",    f"{metadata['fp']} false alarm"),
+        ]
+        for i, (label, value) in enumerate(details):
+            target = [d1, d2, d3][i % 3]
+            target.markdown(f"""
+            <div class='detail-card'>
+                <div class='detail-label'>{label}</div>
+                <div class='detail-value'>{value}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-    # --------------------------------------------------------
-    # MODE: Input Manual
-    # --------------------------------------------------------
-    if input_mode == "✏️ Input Manual":
-        with st.form("predict_form"):
-            c1, c2, c3 = st.columns(3)
+        st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
 
-            with c1:
-                st.markdown("<div class='section-label'>Demografi</div>", unsafe_allow_html=True)
-                gender     = st.selectbox("Gender", ["Female","Male"])
-                senior     = st.selectbox("Senior Citizen", ["No","Yes"])
-                partner    = st.selectbox("Has Partner", ["No","Yes"])
-                dependents = st.selectbox("Has Dependents", ["No","Yes"])
-                tenure     = st.slider("Tenure (months)", 0, 72, 12)
+        tt1, tt2 = st.columns([1.1, 1])
 
-            with c2:
-                st.markdown("<div class='section-label'>Layanan</div>", unsafe_allow_html=True)
-                phone_svc   = st.selectbox("Phone Service", ["Yes","No"])
-                multi_lines = st.selectbox("Multiple Lines", CATEGORICAL_OPTIONS["MultipleLines"])
-                internet    = st.selectbox("Internet Service", CATEGORICAL_OPTIONS["InternetService"])
-                online_sec  = st.selectbox("Online Security", CATEGORICAL_OPTIONS["OnlineSecurity"])
-                online_bak  = st.selectbox("Online Backup", CATEGORICAL_OPTIONS["OnlineBackup"])
-                dev_prot    = st.selectbox("Device Protection", CATEGORICAL_OPTIONS["DeviceProtection"])
+        with tt1:
+            # Threshold trade-off table
+            st.markdown("<div class='section-label'>Threshold Trade-off</div>",
+                        unsafe_allow_html=True)
+            from sklearn.metrics import confusion_matrix as cm_fn, roc_curve, auc as auc_fn
 
-            with c3:
-                st.markdown("<div class='section-label'>Billing</div>", unsafe_allow_html=True)
-                tech_sup   = st.selectbox("Tech Support", CATEGORICAL_OPTIONS["TechSupport"])
-                stream_tv  = st.selectbox("Streaming TV", CATEGORICAL_OPTIONS["StreamingTV"])
-                stream_mv  = st.selectbox("Streaming Movies", CATEGORICAL_OPTIONS["StreamingMovies"])
-                contract   = st.selectbox("Contract", CATEGORICAL_OPTIONS["Contract"])
-                paperless  = st.selectbox("Paperless Billing", ["Yes","No"])
-                payment    = st.selectbox("Payment Method", CATEGORICAL_OPTIONS["PaymentMethod"])
-                monthly_ch = st.number_input("Monthly Charges ($)", 0.0, 200.0, 70.0, step=1.0)
+            rows_thr = []
+            for t in np.arange(0.20, 0.55, 0.05):
+                pt  = (y_proba_all >= t).astype(int)
+                cmt = cm_fn(y_test, pt)
+                tnt, fpt, fnt, tpt = cmt.ravel()
+                rec  = tpt / (tpt + fnt) if (tpt + fnt) > 0 else 0
+                prec = tpt / (tpt + fpt) if (tpt + fpt) > 0 else 0
+                rows_thr.append({
+                    "T":         round(t, 2),
+                    "Recall":    f"{rec:.0%}",
+                    "Precision": f"{prec:.0%}",
+                    "FN":        fnt,
+                    "":          "✅" if abs(t - DEFAULT_THRESHOLD) < 0.01 else ""
+                })
+            st.dataframe(pd.DataFrame(rows_thr), use_container_width=True, hide_index=True)
 
-            submitted = st.form_submit_button("🔍  Prediksi Churn", use_container_width=True)
+            # Confusion matrix pada threshold aktif
+            st.markdown("<div class='section-label' style='margin-top:10px'>"
+                        "Confusion Matrix (threshold aktif)</div>",
+                        unsafe_allow_html=True)
+            pred_active = (y_proba_all >= DEFAULT_THRESHOLD).astype(int)
+            cm_active = cm_fn(y_test, pred_active)
+            cm_df = pd.DataFrame(
+                cm_active,
+                index=["Actual: No Churn", "Actual: Churn"],
+                columns=["Pred: No Churn", "Pred: Churn"]
+            )
+            st.dataframe(cm_df, use_container_width=True)
 
-        if submitted:
-            raw = {
-                "gender":gender, "SeniorCitizen":1 if senior=="Yes" else 0,
-                "Partner":partner, "Dependents":dependents, "tenure":tenure,
-                "PhoneService":phone_svc, "MultipleLines":multi_lines,
-                "InternetService":internet, "OnlineSecurity":online_sec,
-                "OnlineBackup":online_bak, "DeviceProtection":dev_prot,
-                "TechSupport":tech_sup, "StreamingTV":stream_tv,
-                "StreamingMovies":stream_mv, "Contract":contract,
-                "PaperlessBilling":paperless, "PaymentMethod":payment,
-                "MonthlyCharges":monthly_ch,
-            }
-            df_final_result = build_features(raw)
+        with tt2:
+            # ROC Curve
+            st.markdown("<div class='section-label'>ROC Curve</div>", unsafe_allow_html=True)
+            fpr, tpr, _ = roc_curve(y_test, y_proba_all)
+            roc_auc_val = auc_fn(fpr, tpr)
+            fig_roc, ax_roc = plt.subplots(figsize=(3.6, 2.6))
+            ax_roc.plot(fpr, tpr, color="#3b82f6", linewidth=2,
+                        label=f"AUC={roc_auc_val:.3f}")
+            ax_roc.fill_between(fpr, tpr, alpha=0.07, color="#3b82f6")
+            ax_roc.plot([0,1],[0,1], "--", color="#374151", linewidth=1)
+            ax_roc.set_xlabel("FPR", fontsize=8)
+            ax_roc.set_ylabel("TPR", fontsize=8)
+            ax_roc.legend(fontsize=8, framealpha=0.15)
+            ax_roc.spines[["top","right"]].set_visible(False)
+            fig_roc.tight_layout(pad=0.5)
+            st.pyplot(fig_roc)
 
-    # --------------------------------------------------------
-    # MODE: Contoh Profil
-    # --------------------------------------------------------
-    else:
-        st.markdown("<div class='section-label'>Pilih profil contoh untuk melihat cara kerja model</div>",
-                    unsafe_allow_html=True)
-        profile_name = st.selectbox("Contoh Profil", list(EXAMPLE_PROFILES.keys()),
-                                     label_visibility="collapsed")
-        profile_raw = EXAMPLE_PROFILES[profile_name]["raw"]
-
-        p1, p2, p3, p4 = st.columns(4)
-        p1.metric("Tenure", f"{profile_raw['tenure']} bulan")
-        p2.metric("Contract", profile_raw["Contract"])
-        p3.metric("Internet", profile_raw["InternetService"])
-        p4.metric("Monthly Charges", f"${profile_raw['MonthlyCharges']:.2f}")
-
-        with st.expander("Lihat detail profil ini"):
-            st.json(profile_raw)
-
-        run_profile = st.button("🔍  Prediksi Profil Ini", use_container_width=True)
-
-        if run_profile:
-            df_final_result = build_features(profile_raw)
-
-    # --------------------------------------------------------
-    # Render hasil (dipanggil dari mode manapun)
-    # --------------------------------------------------------
-    if df_final_result is not None:
-        render_prediction_result(df_final_result)
+        st.caption(
+            "Section ini ditujukan untuk technical reviewer / data scientist. "
+            "Klik kembali tombol 🔬 Technical Details di footer untuk menyembunyikan."
+        )
