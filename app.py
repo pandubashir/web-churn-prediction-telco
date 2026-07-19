@@ -18,7 +18,7 @@ st.set_page_config(
     page_title="TelcoSight · Churn Intelligence",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 USD_TO_IDR = 17_000
@@ -38,10 +38,9 @@ header { background: transparent !important; }
 [data-testid="stToolbar"] {visibility:hidden;}
 [data-testid="stDecoration"] {display:none;}
 
-/* Pastikan sidebar content selalu visible */
-[data-testid="stSidebar"] * { visibility: visible !important; }
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] { display: block !important; }
-section[data-testid="stSidebar"] { display: block !important; }
+/* Sidebar tidak dipakai lagi — sembunyikan sepenuhnya */
+[data-testid="stSidebar"] { display: none !important; }
+[data-testid="collapsedControl"] { display: none !important; }
 
 .stApp { background-color: #080c14; }
 
@@ -397,26 +396,6 @@ mrr_at_risk     = at_risk * avg_mrr_risk
 
 if "show_model_detail" not in st.session_state:
     st.session_state["show_model_detail"] = False
-
-# ============================================================
-# Sidebar
-# ============================================================
-
-with st.sidebar:
-    st.markdown("""
-    <div style="text-align:center; padding:10px 0 18px 0">
-        <div style="font-size:20px; font-weight:800; color:#f1f5f9">📊 TelcoSight</div>
-        <div style="font-size:11px; color:#64748b; margin-top:3px">Telco Customer Platform</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-    st.markdown("""
-    <div style="font-size:10px; color:#374151; text-align:center">
-        Dataset: IBM Telco Customer Churn<br>
-        Stack: Python · Scikit-learn · Streamlit
-    </div>
-    """, unsafe_allow_html=True)
 
 # ============================================================
 # HERO
