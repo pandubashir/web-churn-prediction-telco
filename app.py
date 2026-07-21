@@ -768,7 +768,7 @@ with f1:
     st.markdown("""
     <div style="padding-top:14px; font-size:11px; color:#1e2d4a">
         TelcoSight · Dataset: IBM Telco Customer Churn ·
-        Model: Logistic Regression · Stack: Python · Scikit-learn · Streamlit ·
+        Model: XGBoost · Stack: Python · Scikit-learn · Streamlit ·
         ⚡ Developed by Pandu Bashir Alamin
     </div>
     """, unsafe_allow_html=True)
