@@ -667,8 +667,16 @@ with col_hasil:
             "<div class='section-label' style='margin-top:14px'>Detail Sinyal Risiko</div>",
             unsafe_allow_html=True
         )
-        coef    = pd.Series(model.coef_[0], index=FEATURE_COLS)
-        contrib = coef * df_input.iloc[0]
+        # model adalah XGBoost (tree-based) sehingga tidak punya .coef_
+        # seperti model linear. Gunakan kontribusi SHAP bawaan XGBoost
+        # (pred_contribs) untuk mendapatkan kontribusi tiap fitur pada
+        # prediksi ini.
+        import xgboost as xgb
+        booster = model.get_booster()
+        dmat    = xgb.DMatrix(df_input[FEATURE_COLS])
+        shap_vals = booster.predict(dmat, pred_contribs=True)[0]
+        # kolom terakhir adalah base value (bias), buang
+        contrib = pd.Series(shap_vals[:-1], index=FEATURE_COLS)
         top_idx = contrib.abs().sort_values(ascending=False).head(8).index
         top_c   = contrib[top_idx].sort_values()
 
