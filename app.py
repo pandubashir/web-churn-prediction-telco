@@ -684,12 +684,11 @@ with col_hasil:
         colors  = ["#ef4444" if v > 0 else "#3b82f6" for v in top_c.values]
         ax.barh(range(len(top_c)), top_c.values,
                 color=colors, height=0.55, edgecolor="none")
-        ax.set_yticks(range(len(top_c)))
-        ax.set_yticklabels(top_c.index, fontsize=8.5)
-        ax.axvline(0, color="#374151", linewidth=1)
-        ax.set_xlabel("Kontribusi ke log-odds churn", fontsize=9, labelpad=8)
-        ax.set_title("🔴 Dorong Churn  |  🔵 Dorong No Churn",
-                     fontsize=9, pad=10, color="#94a3b8")
+        ax.set_title("Kontribusi Fitur terhadap Prediksi", fontsize=9, pad=18, color="#94a3b8")
+        ax.text(0.0, 1.06, "■ Dorong Churn", transform=ax.transAxes,
+                fontsize=8.5, color="#ef4444", ha="left", va="bottom")
+        ax.text(1.0, 1.06, "■ Dorong No Churn", transform=ax.transAxes,
+                fontsize=8.5, color="#3b82f6", ha="right", va="bottom")
         ax.spines[["top","right"]].set_visible(False)
         ax.grid(axis="x", alpha=0.3)
         fig.tight_layout(pad=0.8)
