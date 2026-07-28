@@ -325,19 +325,8 @@ def encode_input(p):
     }
     df = pd.DataFrame([raw])
     df["num_services"] = sum((df[c] == "Yes").astype(int) for c in SERVICE_COLS)
-
-    # Encode manual, bukan pakai get_dummies, karena get_dummies pada
-    # dataframe 1 baris akan salah drop kategori (drop_first menganggap
-    # nilai yang ada sebagai "kategori pertama" lalu membuangnya, sehingga
-    # one-hot jadi 0 semua meski nilainya sebenarnya ada).
-    df_final = pd.DataFrame(0, index=df.index, columns=FEATURE_COLS)
-    for col in df.columns:
-        if col in FEATURE_COLS:
-            df_final[col] = df[col]
-        elif col in ONE_HOT_COLS:
-            dummy_col = f"{col}_{df[col].iloc[0]}"
-            if dummy_col in FEATURE_COLS:
-                df_final[dummy_col] = 1
+    df_enc   = pd.get_dummies(df, columns=ONE_HOT_COLS, drop_first=True)
+    df_final = df_enc.reindex(columns=FEATURE_COLS, fill_value=0)
     return df_final
 
 def get_risk_level(proba, threshold):
